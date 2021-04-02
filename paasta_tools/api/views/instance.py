@@ -879,26 +879,30 @@ def instance_mesh(request):
         error_message = traceback.format_exc()
         raise ApiFailure(error_message, 500)
 
-    try:
-        if not pik.can_handle(instance_type):
-            raise ApiFailure(
-                f"Getting mesh status for {instance_type} instances is not supported",
-                405,  # method not allowed
-            )
+    if not pik.can_handle(instance_type):
+        raise ApiFailure(
+            f"Getting mesh status for {instance_type} instances is not supported",
+            405,  # method not allowed
+        )
 
-        instance_mesh.update(
-            pik.kubernetes_mesh_status(
-                service=service,
-                instance=instance,
-                verbose=verbose,
-                instance_type=instance_type,
-                settings=settings,
-                include_smartstack=include_smartstack,
-                include_envoy=include_envoy,
-            )
+    try:
+        mesh_status = pik.kubernetes_mesh_status(
+            service=service,
+            instance=instance,
+            verbose=verbose,
+            instance_type=instance_type,
+            settings=settings,
+            include_smartstack=include_smartstack,
+            include_envoy=include_envoy,
         )
     except Exception:
         error_message = traceback.format_exc()
         raise ApiFailure(error_message, 500)
 
+    if mesh_status:
+        instance_mesh.update(mesh_status)
+    else:
+        raise ApiFailure(
+            f"Instance '{service}.{instance}' is not configured for the mesh", 405
+        )
     return instance_mesh
