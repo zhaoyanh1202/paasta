@@ -845,3 +845,60 @@ def get_deployment_version(
 ) -> Optional[str]:
     key = ".".join((cluster, instance))
     return actual_deployments[key][:8] if key in actual_deployments else None
+
+
+@view_config(
+    route_name="service.instance.mesh_status", request_method="GET", renderer="json",
+)
+def instance_mesh(request):
+    service = request.swagger_data.get("service")
+    instance = request.swagger_data.get("instance")
+    verbose = request.swagger_data.get("verbose") or 0
+    include_smartstack = request.swagger_data.get("include_smartstack")
+    if include_smartstack is None:
+        include_smartstack = True
+    include_envoy = request.swagger_data.get("include_envoy")
+    if include_envoy is None:
+        include_envoy = True
+
+    instance_mesh: Dict[str, Any] = {}
+    instance_mesh["service"] = service
+    instance_mesh["instance"] = instance
+
+    try:
+        instance_type = validate_service_instance(
+            service, instance, settings.cluster, settings.soa_dir
+        )
+    except NoConfigurationForServiceError:
+        error_message = (
+            "Deployment key %s not found.  Try to execute the corresponding pipeline if it's a fresh instance"
+            % ".".join([settings.cluster, instance])
+        )
+        raise ApiFailure(error_message, 404)
+    except Exception:
+        error_message = traceback.format_exc()
+        raise ApiFailure(error_message, 500)
+
+    try:
+        if not pik.can_handle(instance_type):
+            raise ApiFailure(
+                f"Getting mesh status for {instance_type} instances is not supported",
+                405,  # method not allowed
+            )
+
+        instance_mesh.update(
+            pik.kubernetes_mesh_status(
+                service=service,
+                instance=instance,
+                verbose=verbose,
+                instance_type=instance_type,
+                settings=settings,
+                include_smartstack=include_smartstack,
+                include_envoy=include_envoy,
+            )
+        )
+    except Exception:
+        error_message = traceback.format_exc()
+        raise ApiFailure(error_message, 500)
+
+    return instance_mesh

@@ -867,3 +867,64 @@ def ready_replicas_from_replicaset(replicaset: V1ReplicaSet) -> int:
         ready_replicas = 0
 
     return ready_replicas
+
+
+def kubernetes_mesh_status(
+    service: str,
+    instance: str,
+    verbose: int,
+    instance_type: str,
+    settings: Any,
+    include_smartstack: bool = True,
+    include_envoy: bool = True,
+) -> Mapping[str, Any]:
+
+    if not include_smartstack and not include_envoy:
+        return {}
+
+    kmesh: Dict[str, Any] = {}
+    config_loader = LONG_RUNNING_INSTANCE_TYPE_HANDLERS[instance_type].loader
+    job_config = config_loader(
+        service=service,
+        instance=instance,
+        cluster=settings.cluster,
+        soa_dir=settings.soa_dir,
+        load_deployments=True,
+    )
+    service_namespace_config = kubernetes_tools.load_service_namespace_config(
+        service=service,
+        namespace=job_config.get_nerve_namespace(),
+        soa_dir=settings.soa_dir,
+    )
+    if "proxy_port" not in service_namespace_config:
+        return {}
+
+    kube_client = settings.kubernetes_client
+    if kube_client is None:
+        return {}
+    pod_list = kubernetes_tools.pods_for_service_instance(
+        service=job_config.service,
+        instance=job_config.instance,
+        kube_client=kube_client,
+        namespace=job_config.get_kubernetes_namespace(),
+    )
+
+    mesh_status_kwargs = dict(
+        service=service,
+        instance=job_config.get_nerve_namespace(),
+        job_config=job_config,
+        service_namespace_config=service_namespace_config,
+        pods=pod_list,
+        should_return_individual_backends=verbose > 0,
+        settings=settings,
+    )
+    if include_smartstack:
+        kmesh["smartstack"] = mesh_status(
+            service_mesh=ServiceMesh.SMARTSTACK, **mesh_status_kwargs,
+        )
+    if include_envoy:
+        kmesh["envoy"] = mesh_status(
+            service_mesh=ServiceMesh.ENVOY, **mesh_status_kwargs,
+        )
+
+    return kmesh
