@@ -14,10 +14,8 @@
 # limitations under the License.
 import concurrent.futures
 from typing import List
-from typing import Mapping
 from typing import Sequence
 from typing import Tuple
-from typing import Type
 
 from paasta_tools.api.client import get_paasta_oapi_client
 from paasta_tools.cli.cmds.status import add_instance_filter_arguments
@@ -25,7 +23,6 @@ from paasta_tools.cli.cmds.status import apply_args_filters
 from paasta_tools.cli.cmds.status import get_envoy_status_human
 from paasta_tools.cli.cmds.status import get_smartstack_status_human
 from paasta_tools.utils import DEFAULT_SOA_DIR
-from paasta_tools.utils import InstanceConfig
 from paasta_tools.utils import load_system_paasta_config
 from paasta_tools.utils import PaastaColors
 from paasta_tools.utils import SystemPaastaConfig
@@ -67,7 +64,6 @@ def paasta_mesh_status_on_api_endpoint(
     cluster: str,
     service: str,
     instance: str,
-    instance_type: str,
     verbose: int,
     system_paasta_config: SystemPaastaConfig,
 ) -> Tuple[int, List[str]]:
@@ -122,19 +118,18 @@ def paasta_mesh_status_on_api_endpoint(
 def report_mesh_status_for_cluster(
     cluster: str,
     service: str,
-    instance_whitelist: Mapping[str, Type[InstanceConfig]],
+    instances: List[str],
     system_paasta_config: SystemPaastaConfig,
     verbose: int = 0,
 ) -> Tuple[int, Sequence[str]]:
     output = [f"service: {service}", f"cluster: {cluster}"]
     return_codes = []
 
-    for instance, instance_config_class in instance_whitelist.items():
+    for instance in instances:
         return_code, instance_output = paasta_mesh_status_on_api_endpoint(
             cluster=cluster,
             service=service,
             instance=instance,
-            instance_type=instance_config_class.config_filename_prefix,
             verbose=verbose,
             system_paasta_config=system_paasta_config,
         )
@@ -160,7 +155,7 @@ def paasta_mesh_status(args) -> int:
                     dict(
                         cluster=cluster,
                         service=service,
-                        instance_whitelist=instances,
+                        instances=list(instances.keys()),
                         system_paasta_config=system_paasta_config,
                         verbose=args.verbose,
                     ),
